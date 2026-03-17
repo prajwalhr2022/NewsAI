@@ -1,0 +1,16 @@
+crawler/venv/
+crawler/__pycache__/
+crawler/*.log
+crawler/.env
+crawler/.env.example
+
+# Node
+frontend/node_modules/
+frontend/.next/
+frontend/.env.local
+frontend/.env
+
+# General
+.DS_Store
+*.pyc
+*.pyo

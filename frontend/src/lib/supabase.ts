@@ -1,0 +1,120 @@
+import { createClient } from '@supabase/supabase-js'
+
+// ── Types ────────────────────────────────────────────────────
+
+export interface Article {
+  id: string
+  title: string
+  summary: string | null
+  source_url: string
+  source_name: string | null
+  image_url: string | null
+  category: string | null
+  subcategory: string | null
+  is_india_focused: boolean
+  language: string
+  trend_score: number
+  verification_status: 'confirmed' | 'flagged' | 'unverified'
+  source_count: number
+  published_at: string | null
+  fetched_at: string
+  tags: string[]
+  related_sources: { name: string; url: string; tier: number }[]
+  translations: Record<string, { title: string; summary: string }>
+}
+
+export interface Category {
+  id: string
+  name: string
+  slug: string
+  parent_slug: string | null
+  article_count: number
+}
+
+export interface TrendingTopic {
+  id: string
+  topic: string
+  score: number
+  article_count: number
+}
+
+export interface ArticleFilters {
+  category?: string
+  subcategory?: string
+  isIndia?: boolean
+  language?: string
+  search?: string
+  limit?: number
+}
+
+// ── Client ───────────────────────────────────────────────────
+
+const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
+export const supabase = createClient(supabaseUrl, supabaseAnon)
+
+// ── Queries ──────────────────────────────────────────────────
+
+export async function getArticles(filters: ArticleFilters = {}): Promise<Article[]> {
+  const { category, subcategory, isIndia, search, limit = 60 } = filters
+
+  let query = supabase
+    .from('articles')
+    .select('*')
+    .order('fetched_at', { ascending: false })
+    .limit(limit)
+
+  if (category && category !== 'all') {
+    query = query.eq('category', category)
+  }
+  if (subcategory) {
+    query = query.eq('subcategory', subcategory)
+  }
+  if (isIndia !== undefined) {
+    query = query.eq('is_india_focused', isIndia)
+  }
+  if (search && search.trim()) {
+    query = query.ilike('title', `%${search.trim()}%`)
+  }
+
+  const { data, error } = await query
+  if (error) { console.error('getArticles error:', error); return [] }
+  return (data as Article[]) ?? []
+}
+
+export async function getCategories(): Promise<Category[]> {
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .gte('article_count', 2)
+    .order('article_count', { ascending: false })
+
+  if (error) { console.error('getCategories error:', error); return [] }
+  return (data as Category[]) ?? []
+}
+
+export async function getTrendingTopics(): Promise<TrendingTopic[]> {
+  const { data, error } = await supabase
+    .from('trending_topics')
+    .select('*')
+    .order('score', { ascending: false })
+    .limit(8)
+
+  if (error) { console.error('getTrendingTopics error:', error); return [] }
+  return (data as TrendingTopic[]) ?? []
+}
+
+export async function cacheTranslation(
+  articleId: string,
+  lang: string,
+  translated: { title: string; summary: string },
+  currentTranslations: Record<string, { title: string; summary: string }>
+): Promise<void> {
+  const updated = { ...currentTranslations, [lang]: translated }
+  const { error } = await supabase
+    .from('articles')
+    .update({ translations: updated })
+    .eq('id', articleId)
+  if (error) console.error('cacheTranslation error:', error)
+}
