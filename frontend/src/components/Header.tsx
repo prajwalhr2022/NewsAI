@@ -5,13 +5,8 @@ import { Search, Sun, Moon, Zap } from 'lucide-react'
 
 const LANGUAGES = [
   { code: 'en', label: 'English' },
-  { code: 'hi', label: 'हिं' },
-  { code: 'ta', label: 'தமி' },
-  { code: 'te', label: 'తెలు' },
-  { code: 'ml', label: 'മല' },
-  { code: 'bn', label: 'বাং' },
-  { code: 'mr', label: 'मरा' },
-  { code: 'kn', label: 'ಕನ್' },
+  { code: 'hi', label: 'हिंदी' },
+  { code: 'kn', label: 'ಕನ್ನಡ' },
 ]
 
 interface HeaderProps {
@@ -22,18 +17,16 @@ interface HeaderProps {
 }
 
 export default function Header({ search, onSearchChange, language, onLanguageChange }: HeaderProps) {
-  const { theme, setTheme, resolvedTheme } = useTheme()
+  const { setTheme, resolvedTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
   const [time, setTime] = useState('')
 
   useEffect(() => { setMounted(true) }, [])
 
   useEffect(() => {
-    const tick = () => {
-      setTime(new Date().toLocaleTimeString('en-IN', {
-        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
-      }))
-    }
+    const tick = () => setTime(new Date().toLocaleTimeString('en-IN', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    }))
     tick()
     const id = setInterval(tick, 1000)
     return () => clearInterval(id)
@@ -57,18 +50,15 @@ export default function Header({ search, onSearchChange, language, onLanguageCha
               NewsAI
             </span>
             {time && (
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontVariantNumeric: 'tabular-nums', marginLeft: '0.25rem' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem', fontVariantNumeric: 'tabular-nums' }}>
                 {time}
               </span>
             )}
           </div>
 
           {/* Search */}
-          <div className="search-wrapper" style={{ flex: 1, maxWidth: '480px', position: 'relative' }}>
-            <Search
-              size={15}
-              style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }}
-            />
+          <div style={{ flex: 1, maxWidth: '480px', position: 'relative' }}>
+            <Search size={15} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
             <input
               className="search-input"
               type="text"
@@ -80,24 +70,36 @@ export default function Header({ search, onSearchChange, language, onLanguageCha
 
           {/* Right controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            <select
-              className="lang-select"
-              value={language}
-              onChange={e => onLanguageChange(e.target.value)}
-              title="Select language"
-            >
+            {/* Language toggle pills */}
+            <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '9999px', padding: '3px', gap: '2px' }}>
               {LANGUAGES.map(l => (
-                <option key={l.code} value={l.code}>{l.label}</option>
+                <button
+                  key={l.code}
+                  onClick={() => onLanguageChange(l.code)}
+                  style={{
+                    padding: '0.25rem 0.75rem',
+                    borderRadius: '9999px',
+                    fontSize: '0.75rem',
+                    fontWeight: 500,
+                    border: 'none',
+                    cursor: 'pointer',
+                    background: language === l.code ? 'var(--accent)' : 'transparent',
+                    color: language === l.code ? 'white' : 'var(--text-secondary)',
+                    transition: 'all 0.2s',
+                    fontFamily: 'var(--font-dm)',
+                  }}
+                >
+                  {l.label}
+                </button>
               ))}
-            </select>
+            </div>
 
             {mounted && (
-              <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme" aria-label="Toggle theme">
+              <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
                 {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
             )}
           </div>
-
         </div>
       </div>
     </header>
