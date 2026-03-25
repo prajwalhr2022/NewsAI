@@ -1,6 +1,6 @@
 # ============================================================
-# processor.py — AI processing via Groq (summarise) + Gemini (categorise)
-# Uses: google-genai (new SDK), groq
+# processor.py — News AI processing
+# Groq: summarisation | Gemini: categorisation + verification
 # ============================================================
 
 import asyncio
@@ -16,22 +16,60 @@ from groq import Groq
 
 logger = logging.getLogger(__name__)
 
-# ─── Groq client ─────────────────────────────────────────────
-groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
-# ─── Gemini client (new SDK) ─────────────────────────────────
+groq_client   = Groq(api_key=os.environ["GROQ_API_KEY"])
 gemini_client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
-GEMINI_MODEL = "gemini-2.0-flash"   # free tier: 1500 req/day, 1M tokens/min
+GEMINI_MODEL  = "gemini-2.0-flash"
 
 BATCH_SIZE = 5
-MAX_AI_BATCHES_PER_RUN = 40 
 
+# ── Expanded category list ────────────────────────────────────
 VALID_CATEGORIES = {
-    "Politics", "Technology", "Business & Economy", "Sports",
-    "Science & Space", "Health & Medicine", "Entertainment",
-    "Environment & Climate", "World Affairs", "Crime & Law",
-    "Education", "Lifestyle", "Defence & Security",
+    "Politics",
+    "Geopolitics",
+    "Regional Politics",
+    "Technology",
+    "Business & Economy",
+    "Trade & Markets",
+    "Agriculture",
+    "Sports",
+    "Cricket",
+    "Science & Space",
+    "Health & Medicine",
+    "Entertainment",
+    "Environment & Climate",
+    "World Affairs",
+    "Crime & Law",
+    "Education",
+    "Lifestyle",
+    "Defence & Security",
+    "Cars & Automobiles",
+    "Electronics & Gadgets",
 }
+
+# ── Junk/spam article detection ───────────────────────────────
+JUNK_PATTERNS = [
+    r"click here", r"subscribe now", r"sign up for",
+    r"buy now", r"limited offer", r"exclusive deal",
+    r"casino", r"betting", r"forex trading",
+    r"lose weight", r"miracle cure", r"earn \$",
+    r"sponsored", r"advertisement", r"press release",
+    r"follow us on", r"join our newsletter",
+]
+
+def is_junk_article(title: str, description: str) -> bool:
+    """Return True if article looks like spam/ad/junk."""
+    combined = (title + " " + (description or "")).lower()
+    # Too short title
+    if len(title.strip()) < 10:
+        return True
+    # Junk patterns
+    for pattern in JUNK_PATTERNS:
+        if re.search(pattern, combined):
+            return True
+    # All caps title (usually clickbait)
+    if title == title.upper() and len(title) > 20:
+        return True
+    return False
 
 
 def _extract_json(text: str) -> Any:
@@ -39,9 +77,7 @@ def _extract_json(text: str) -> Any:
     return json.loads(text)
 
 
-# ─────────────────────────────────────────────────────────────
-# Groq — Summarisation
-# ─────────────────────────────────────────────────────────────
+# ── Groq — summarisation ──────────────────────────────────────
 
 def _groq_summarise_batch(articles: list[dict]) -> list[dict]:
     items = []
@@ -50,9 +86,9 @@ def _groq_summarise_batch(articles: list[dict]) -> list[dict]:
         items.append(f'{i+1}. TITLE: {a["title"]}\n   SNIPPET: {snippet}')
 
     prompt = (
-        "You are a factual news summariser. For each article below, "
-        "provide a 2-3 sentence objective summary and 3-5 relevant tags.\n\n"
-        "Return ONLY a JSON array (no markdown, no explanation):\n"
+        "You are a factual news summariser for a professional news site called Satyaksh. "
+        "For each article below, provide a 2-3 sentence objective factual summary and 3-5 relevant tags.\n\n"
+        "Return ONLY a JSON array (no markdown):\n"
         '[{"summary": "...", "tags": ["tag1", "tag2", "tag3"]}, ...]\n\n'
         "Articles:\n" + "\n\n".join(items)
     )
@@ -77,27 +113,39 @@ def _groq_summarise_batch(articles: list[dict]) -> list[dict]:
         ]
 
 
-# ─────────────────────────────────────────────────────────────
-# Gemini — Categorisation
-# ─────────────────────────────────────────────────────────────
+# ── Gemini — categorisation + verification ───────────────────
 
 def _gemini_categorise_batch(articles: list[dict]) -> list[dict]:
     items = []
     for i, a in enumerate(articles):
         region_hint = "INDIA" if a.get("region") == "india" else "WORLD"
-        items.append(f'{i+1}. [{region_hint}] {a["title"]}')
+        snippet = (a.get("description") or "")[:100]
+        items.append(f'{i+1}. [{region_hint}] {a["title"]} | {snippet}')
 
     valid_cats = ", ".join(sorted(VALID_CATEGORIES))
     prompt = (
-        f"You are a news categorisation engine. Valid categories: {valid_cats}.\n\n"
-        "For each article, return ONLY a JSON array (no markdown):\n"
-        '[{"category": "...", "subcategory": "...", "is_india_focused": true/false, '
-        '"verification_status": "confirmed"|"flagged"|"unverified", "trend_score": 0-100}]\n\n'
+        f"You are a news categorisation engine for NewsAI news site.\n"
+        f"Valid categories: {valid_cats}\n\n"
+        "For each article return ONLY a JSON array (no markdown):\n"
+        "[\n"
+        '  {\n'
+        '    "category": "<from valid list above>",\n'
+        '    "subcategory": "<specific 1-3 word subtopic>",\n'
+        '    "is_india_focused": true/false,\n'
+        '    "verification_status": "confirmed"|"unverified"|"flagged",\n'
+        '    "is_genuine_news": true/false,\n'
+        '    "trend_score": <0-100>\n'
+        '  }\n'
+        "]\n\n"
         "Rules:\n"
-        "- category must be exactly one value from the valid list\n"
-        "- subcategory: specific 1-3 word topic (e.g. Artificial Intelligence, Cricket)\n"
-        "- verification_status: confirmed=hard fact, flagged=opinion/satire, unverified=default\n"
-        "- trend_score: 0-100 based on newsworthiness right now\n\n"
+        "- category MUST be exactly one value from the valid list\n"
+        "- subcategory: specific topic like 'Lok Sabha', 'iPhone 16', 'Champions League'\n"
+        "- verification_status:\n"
+        "    confirmed = reported by multiple major outlets or official sources\n"
+        "    flagged = opinion, satire, unverified claim, or dubious source\n"
+        "    unverified = single source, not yet confirmed elsewhere\n"
+        "- is_genuine_news: false if this looks like sponsored content, ad, listicle, or non-news\n"
+        "- trend_score: 0-100 based on newsworthiness and importance right now\n\n"
         "Articles:\n" + "\n".join(items)
     )
 
@@ -105,7 +153,7 @@ def _gemini_categorise_batch(articles: list[dict]) -> list[dict]:
         response = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt,
-            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=1000),
+            config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=1200),
         )
         raw = response.text or ""
         parsed = _extract_json(raw)
@@ -117,7 +165,7 @@ def _gemini_categorise_batch(articles: list[dict]) -> list[dict]:
                 if item.get("verification_status") not in {"confirmed", "flagged", "unverified"}:
                     item["verification_status"] = "unverified"
             return parsed
-        raise ValueError(f"Length mismatch: expected {len(articles)}, got {len(parsed)}")
+        raise ValueError(f"Length mismatch: {len(articles)} vs {len(parsed)}")
     except Exception as exc:
         logger.warning("Gemini batch failed: %s -- using defaults", exc)
         return [
@@ -125,49 +173,31 @@ def _gemini_categorise_batch(articles: list[dict]) -> list[dict]:
                 "category":            a.get("category", "World Affairs"),
                 "subcategory":         None,
                 "is_india_focused":    a.get("region") == "india",
-                "verification_status": a.get("verification_status", "unverified"),
+                "verification_status": "unverified",
+                "is_genuine_news":     True,
                 "trend_score":         20,
             }
             for a in articles
         ]
 
 
-# ─────────────────────────────────────────────────────────────
-# Main processing pipeline
-# ─────────────────────────────────────────────────────────────
+# ── Main processing pipeline ──────────────────────────────────
 
 async def process_articles(articles: list[dict]) -> list[dict]:
+    # Pre-filter obvious junk before sending to AI
+    clean_articles = []
+    for a in articles:
+        if is_junk_article(a["title"], a.get("description", "")):
+            logger.debug("Filtered junk article: %s", a["title"][:60])
+            continue
+        clean_articles.append(a)
+
+    logger.info("After junk filter: %d/%d articles remain", len(clean_articles), len(articles))
+
     processed: list[dict] = []
-    for i in range(0, len(articles), BATCH_SIZE):
-        # Stop AI processing if we've hit the daily cap
-        if i // BATCH_SIZE >= MAX_AI_BATCHES_PER_RUN:
-            logger.warning("Daily AI batch cap reached (%d batches). Saving remaining articles with fallback.", MAX_AI_BATCHES_PER_RUN)
-            # Save remaining articles with raw descriptions, no AI
-            for article in articles[i:]:
-                processed.append({
-                    "title":               article["title"],
-                    "summary":             (article.get("description") or article.get("title") or "")[:200],
-                    "source_url":          article["source_url"],
-                    "source_name":         article["source_name"],
-                    "image_url":           article.get("image_url"),
-                    "category":            article.get("category", "World Affairs"),
-                    "subcategory":         None,
-                    "is_india_focused":    article.get("region") == "india",
-                    "language":            "en",
-                    "trend_score":         10,
-                    "verification_status": "unverified",
-                    "source_count":        article.get("source_count", 1),
-                    "published_at":        article.get("published_at"),
-                    "tags":                [],
-                    "related_sources":     article.get("related_sources", []),
-                    "translations":        {},
-                })
-            break
 
-        batch = articles[i : i + BATCH_SIZE]
-
-    for i in range(0, len(articles), BATCH_SIZE):
-        batch = articles[i : i + BATCH_SIZE]
+    for i in range(0, len(clean_articles), BATCH_SIZE):
+        batch = clean_articles[i: i + BATCH_SIZE]
 
         loop = asyncio.get_event_loop()
         summaries, categories = await asyncio.gather(
@@ -176,16 +206,28 @@ async def process_articles(articles: list[dict]) -> list[dict]:
         )
 
         for article, summary_data, cat_data in zip(batch, summaries, categories):
+            # Skip AI-flagged non-genuine articles
+            if not cat_data.get("is_genuine_news", True):
+                logger.debug("Skipping non-genuine: %s", article["title"][:60])
+                continue
+
             trend_score = cat_data.get("trend_score", 20) + article.get("trend_boost", 0)
 
+            # Verification: honour dedup-based upgrades
             existing_status = article.get("verification_status", "unverified")
-            ai_status = cat_data.get("verification_status", "unverified")
-            STATUS_RANK = {"confirmed": 2, "unverified": 1, "flagged": 0}
-            final_status = (
+            ai_status       = cat_data.get("verification_status", "unverified")
+            STATUS_RANK     = {"confirmed": 2, "unverified": 1, "flagged": 0}
+            final_status    = (
                 existing_status
                 if STATUS_RANK.get(existing_status, 0) >= STATUS_RANK.get(ai_status, 0)
                 else ai_status
             )
+
+            # Auto-confirm if 3+ sources reported it
+            if article.get("source_count", 1) >= 3:
+                final_status = "confirmed"
+            elif article.get("source_count", 1) >= 2 and article.get("tier", 2) == 1:
+                final_status = "confirmed"
 
             processed.append({
                 "title":               article["title"],
@@ -207,22 +249,20 @@ async def process_articles(articles: list[dict]) -> list[dict]:
             })
 
         logger.info("Processed batch %d/%d (%d articles done)",
-                    i // BATCH_SIZE + 1, -(-len(articles) // BATCH_SIZE), len(processed))
+                    i // BATCH_SIZE + 1, -(-len(clean_articles) // BATCH_SIZE), len(processed))
         await asyncio.sleep(1.0)
 
     return processed
 
 
-# ─────────────────────────────────────────────────────────────
-# Trending topics regeneration (hourly)
-# ─────────────────────────────────────────────────────────────
+# ── Trending topics ───────────────────────────────────────────
 
 def generate_trending_topics(recent_titles: list[str]) -> list[dict]:
     if not recent_titles:
         return []
     titles_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(recent_titles[:50]))
     prompt = (
-        "From these headlines, extract the top 8 trending topics right now.\n"
+        "From these news headlines, extract the top 8 trending topics right now.\n"
         "Return ONLY a JSON array:\n"
         '[{"topic": "Short topic name", "score": 0.0-1.0, "article_count": integer}]\n\n'
         "Headlines:\n" + titles_text
@@ -231,18 +271,48 @@ def generate_trending_topics(recent_titles: list[str]) -> list[dict]:
         response = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return _extract_json(response.text or "")[:8]
     except Exception as exc:
-        logger.error("Trending topics generation failed: %s", exc)
+        logger.error("Trending topics failed: %s", exc)
     return []
 
 
-# ─────────────────────────────────────────────────────────────
-# On-demand translation
-# ─────────────────────────────────────────────────────────────
+# ── Predictions ───────────────────────────────────────────────
 
-LANGUAGE_NAMES = {
-    "hi": "Hindi", "ta": "Tamil", "te": "Telugu",
-    "ml": "Malayalam", "bn": "Bengali", "mr": "Marathi", "kn": "Kannada",
-}
+def generate_predictions(recent_titles: list[str]) -> dict:
+    """
+    Generate 1-week market predictions based on recent news.
+    Returns dict with gold, silver, oil, global_stocks, india_stocks predictions.
+    """
+    if not recent_titles:
+        return {}
+    titles_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(recent_titles[:60]))
+    prompt = (
+        "You are a financial analyst. Based on the following recent news headlines, "
+        "provide brief 1-week outlook predictions.\n\n"
+        "Return ONLY a JSON object (no markdown):\n"
+        "{\n"
+        '  "gold":          {"direction": "up"|"down"|"sideways", "reason": "1 sentence", "confidence": "high"|"medium"|"low"},\n'
+        '  "silver":        {"direction": "up"|"down"|"sideways", "reason": "1 sentence", "confidence": "high"|"medium"|"low"},\n'
+        '  "oil":           {"direction": "up"|"down"|"sideways", "reason": "1 sentence", "confidence": "high"|"medium"|"low"},\n'
+        '  "global_stocks": {"direction": "up"|"down"|"sideways", "reason": "1 sentence", "confidence": "high"|"medium"|"low"},\n'
+        '  "india_stocks":  {"direction": "up"|"down"|"sideways", "reason": "1 sentence", "confidence": "high"|"medium"|"low"},\n'
+        '  "generated_at":  "ISO timestamp"\n'
+        "}\n\n"
+        "Recent headlines:\n" + titles_text
+    )
+    try:
+        response = gemini_client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
+        result = _extract_json(response.text or "")
+        from datetime import datetime, timezone
+        result["generated_at"] = datetime.now(timezone.utc).isoformat()
+        return result
+    except Exception as exc:
+        logger.error("Predictions generation failed: %s", exc)
+    return {}
+
+
+# ── On-demand translation ─────────────────────────────────────
+
+LANGUAGE_NAMES = {"hi": "Hindi", "kn": "Kannada"}
 
 def translate_article(title: str, summary: str, target_lang: str) -> dict:
     lang_name = LANGUAGE_NAMES.get(target_lang, target_lang)

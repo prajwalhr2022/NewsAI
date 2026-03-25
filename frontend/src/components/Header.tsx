@@ -4,9 +4,9 @@ import { useTheme } from 'next-themes'
 import { Search, Sun, Moon, Zap } from 'lucide-react'
 
 const LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'hi', label: 'हिंदी' },
-  { code: 'kn', label: 'ಕನ್ನಡ' },
+  { code: 'en', label: 'EN' },
+  { code: 'hi', label: 'हिं' },
+  { code: 'kn', label: 'ಕನ್' },
 ]
 
 interface HeaderProps {
@@ -46,18 +46,23 @@ export default function Header({ search, onSearchChange, language, onLanguageCha
             <div style={{ background: 'var(--accent)', borderRadius: '8px', padding: '5px', display: 'flex' }}>
               <Zap size={18} color="white" fill="white" />
             </div>
-            <span style={{ fontFamily: 'var(--font-playfair)', fontWeight: 900, fontSize: '1.375rem', color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-              NewsAI
-            </span>
+            <div>
+              <div style={{ fontFamily: 'var(--font-playfair)', fontWeight: 900, fontSize: '1.25rem', color: 'var(--text-primary)', letterSpacing: '-0.01em', lineHeight: 1.1 }}>
+                NewsAI
+              </div>
+              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                Truth · News · Insight
+              </div>
+            </div>
             {time && (
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.25rem', fontVariantNumeric: 'tabular-nums' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.5rem', fontVariantNumeric: 'tabular-nums' }}>
                 {time}
               </span>
             )}
           </div>
 
           {/* Search */}
-          <div style={{ flex: 1, maxWidth: '480px', position: 'relative' }}>
+          <div style={{ flex: 1, maxWidth: '500px', position: 'relative' }}>
             <Search size={15} style={{ position: 'absolute', left: '0.875rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
             <input
               className="search-input"
@@ -70,36 +75,30 @@ export default function Header({ search, onSearchChange, language, onLanguageCha
 
           {/* Right controls */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-            {/* Language toggle pills */}
             <div style={{ display: 'flex', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '9999px', padding: '3px', gap: '2px' }}>
               {LANGUAGES.map(l => (
                 <button
                   key={l.code}
                   onClick={() => onLanguageChange(l.code)}
                   style={{
-                    padding: '0.25rem 0.75rem',
-                    borderRadius: '9999px',
-                    fontSize: '0.75rem',
-                    fontWeight: 500,
-                    border: 'none',
-                    cursor: 'pointer',
+                    padding: '0.25rem 0.625rem', borderRadius: '9999px',
+                    fontSize: '0.75rem', fontWeight: 500, border: 'none', cursor: 'pointer',
                     background: language === l.code ? 'var(--accent)' : 'transparent',
                     color: language === l.code ? 'white' : 'var(--text-secondary)',
-                    transition: 'all 0.2s',
-                    fontFamily: 'var(--font-dm)',
+                    transition: 'all 0.2s', fontFamily: 'var(--font-dm)',
                   }}
                 >
                   {l.label}
                 </button>
               ))}
             </div>
-
             {mounted && (
               <button className="theme-toggle" onClick={toggleTheme} title="Toggle theme">
                 {resolvedTheme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
             )}
           </div>
+
         </div>
       </div>
     </header>

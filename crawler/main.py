@@ -1,6 +1,6 @@
 # ============================================================
-# main.py — Crawler entry point + APScheduler
-# Crawls every 30 minutes to stay within free API tier limits
+# main.py — NewsAI News Crawler
+# Crawls every 20 minutes
 # ============================================================
 
 import asyncio
@@ -38,7 +38,10 @@ from database import (
     recalculate_category_counts, save_trending_topics, get_recent_titles,
 )
 
-MAX_AI_ARTICLES_PER_RUN = 150  # 30 batches x 5 = 150 articles AI-processed per cycle
+# 20 min cycle × 72 cycles/day × 100 articles = 7200 AI calls/day
+# Groq: 100k tokens/day → ~70 articles with summaries safely
+# Gemini: 1500 req/day → 1500 categorisation calls safely
+MAX_AI_ARTICLES_PER_RUN = 100
 
 
 async def crawl_cycle() -> None:
@@ -51,7 +54,7 @@ async def crawl_cycle() -> None:
 
         existing_urls = get_existing_urls()
         new_articles = [a for a in articles if a["source_url"] not in existing_urls]
-        logger.info("New: %d, Existing: %d", len(new_articles), len(articles) - len(new_articles))
+        logger.info("New: %d  Existing: %d", len(new_articles), len(articles) - len(new_articles))
 
         if not new_articles:
             return
@@ -89,28 +92,30 @@ async def crawl_cycle() -> None:
         logger.info("=== Crawl cycle complete ===")
 
 
-async def hourly_tasks() -> None:
-    logger.info("--- Hourly tasks ---")
+async def trending_tasks() -> None:
+    logger.info("--- Trending refresh ---")
     try:
         titles = get_recent_titles(50)
         if titles:
             save_trending_topics(generate_trending_topics(titles))
         recalculate_category_counts()
     except Exception as exc:
-        logger.exception("Hourly tasks failed: %s", exc)
+        logger.exception("Trending tasks failed: %s", exc)
 
 
 async def main() -> None:
-    logger.info("NewsAI Crawler starting — 30 min crawl cycle")
+    logger.info("NewsAI Crawler starting — 20 min crawl cycle")
     await crawl_cycle()
-    await hourly_tasks()
+    await trending_tasks()
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(crawl_cycle,  "interval", minutes=30, id="crawl")
-    scheduler.add_job(hourly_tasks, "interval", hours=6,    id="hourly")
+    # Crawl every 20 minutes
+    scheduler.add_job(crawl_cycle,    "interval", minutes=20, id="crawl")
+    # Refresh trending every 20 minutes too
+    scheduler.add_job(trending_tasks, "interval", minutes=20, id="trending")
     scheduler.start()
 
-    logger.info("Scheduler running. Crawl every 30 min, trending every 6 hrs.")
+    logger.info("Scheduler running. Crawl + trending every 20 min.")
     try:
         while True:
             await asyncio.sleep(60)

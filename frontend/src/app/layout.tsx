@@ -18,8 +18,8 @@ const dmSans = DM_Sans({
 })
 
 export const metadata: Metadata = {
-  title: 'NewsAI — Real-time AI-powered news',
-  description: 'AI-powered real-time news aggregator covering world and India news across 65+ sources.',
+  title: 'NewsAI',
+  description: 'AI-powered real-time news aggregator. Verified news from 65+ sources covering India and the world.',
   icons: { icon: '/favicon.ico' },
 }
 

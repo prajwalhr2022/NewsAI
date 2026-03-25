@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
 
-// ── Types ────────────────────────────────────────────────────
-
 export interface Article {
   id: string
   title: string
@@ -38,38 +36,47 @@ export interface TrendingTopic {
   article_count: number
 }
 
-export interface ArticleFilters {
-  category?: string
-  subcategory?: string
-  isIndia?: boolean
-  language?: string
-  search?: string
-  limit?: number
+export interface PredictionItem {
+  direction: 'up' | 'down' | 'sideways'
+  reason: string
+  confidence: 'high' | 'medium' | 'low'
 }
 
-// ── Client ───────────────────────────────────────────────────
+export interface Predictions {
+  id: string
+  gold: PredictionItem
+  silver: PredictionItem
+  oil: PredictionItem
+  global_stocks: PredictionItem
+  india_stocks: PredictionItem
+  generated_at: string
+}
+
+export interface ArticleFilters {
+  category?: string
+  isIndia?: boolean
+  search?: string
+  limit?: number
+  offset?: number
+  orderBy?: 'fetched_at' | 'trend_score'
+}
 
 const supabaseUrl  = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabase = createClient(supabaseUrl, supabaseAnon)
 
-// ── Queries ──────────────────────────────────────────────────
-
 export async function getArticles(filters: ArticleFilters = {}): Promise<Article[]> {
-  const { category, subcategory, isIndia, search, limit = 60 } = filters
+  const { category, isIndia, search, limit = 100, offset = 0, orderBy = 'fetched_at' } = filters
 
   let query = supabase
     .from('articles')
     .select('*')
-    .order('fetched_at', { ascending: false })
-    .limit(limit)
+    .order(orderBy, { ascending: false })
+    .range(offset, offset + limit - 1)
 
   if (category && category !== 'all') {
     query = query.eq('category', category)
-  }
-  if (subcategory) {
-    query = query.eq('subcategory', subcategory)
   }
   if (isIndia !== undefined) {
     query = query.eq('is_india_focused', isIndia)
@@ -83,11 +90,30 @@ export async function getArticles(filters: ArticleFilters = {}): Promise<Article
   return (data as Article[]) ?? []
 }
 
+export async function getTopArticles(filters: ArticleFilters = {}): Promise<Article[]> {
+  const { category, isIndia, limit = 8 } = filters
+
+  let query = supabase
+    .from('articles')
+    .select('*')
+    .gte('source_count', 2)
+    .order('trend_score', { ascending: false })
+    .limit(limit)
+
+  if (category && category !== 'all') query = query.eq('category', category)
+  if (isIndia !== undefined) query = query.eq('is_india_focused', isIndia)
+
+  const { data, error } = await query
+  if (error) { console.error('getTopArticles error:', error); return [] }
+  return (data as Article[]) ?? []
+}
+
 export async function getCategories(): Promise<Category[]> {
   const { data, error } = await supabase
     .from('categories')
     .select('*')
     .gte('article_count', 2)
+    .is('parent_slug', null)
     .order('article_count', { ascending: false })
 
   if (error) { console.error('getCategories error:', error); return [] }
@@ -99,22 +125,20 @@ export async function getTrendingTopics(): Promise<TrendingTopic[]> {
     .from('trending_topics')
     .select('*')
     .order('score', { ascending: false })
-    .limit(8)
+    .limit(10)
 
   if (error) { console.error('getTrendingTopics error:', error); return [] }
   return (data as TrendingTopic[]) ?? []
 }
 
-export async function cacheTranslation(
-  articleId: string,
-  lang: string,
-  translated: { title: string; summary: string },
-  currentTranslations: Record<string, { title: string; summary: string }>
-): Promise<void> {
-  const updated = { ...currentTranslations, [lang]: translated }
-  const { error } = await supabase
-    .from('articles')
-    .update({ translations: updated })
-    .eq('id', articleId)
-  if (error) console.error('cacheTranslation error:', error)
+export async function getPredictions(): Promise<Predictions | null> {
+  const { data, error } = await supabase
+    .from('predictions')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .single()
+
+  if (error) return null
+  return data as Predictions
 }

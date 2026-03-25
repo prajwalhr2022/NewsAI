@@ -24,7 +24,6 @@ def get_client() -> Client:
 
 
 def get_existing_urls(limit: int = 2000) -> set[str]:
-    """Return URLs already saved so we skip re-processing them."""
     client = get_client()
     try:
         resp = (
@@ -41,7 +40,6 @@ def get_existing_urls(limit: int = 2000) -> set[str]:
 
 
 def save_articles(articles: list[dict[str, Any]]) -> int:
-    """Upsert articles. Returns number saved."""
     if not articles:
         return 0
 
@@ -57,7 +55,7 @@ def save_articles(articles: list[dict[str, Any]]) -> int:
 
     for i in range(0, len(articles), CHUNK):
         rows = [{k: v for k, v in a.items() if k in ALLOWED}
-                for a in articles[i : i + CHUNK]]
+                for a in articles[i: i + CHUNK]]
         try:
             client.table("articles").upsert(rows, on_conflict="source_url").execute()
             saved += len(rows)
@@ -69,10 +67,6 @@ def save_articles(articles: list[dict[str, Any]]) -> int:
 
 
 def recalculate_category_counts() -> None:
-    """
-    Recalculate article_count per category and subcategory.
-    Uses upsert on slug (unique) so duplicate name errors never happen.
-    """
     client = get_client()
     try:
         resp = client.table("articles").select("category, subcategory").execute()
@@ -92,35 +86,42 @@ def recalculate_category_counts() -> None:
         def to_slug(name: str) -> str:
             return name.lower().replace(" & ", "-").replace(" ", "-")
 
-        # Upsert top-level categories — conflict on slug only (slug is unique)
         for cat_name, count in cat_counts.items():
             slug = to_slug(cat_name)
-            client.table("categories").upsert(
-                {"name": cat_name, "slug": slug, "parent_slug": None, "article_count": count},
-                on_conflict="slug",
-            ).execute()
+            try:
+                client.table("categories").upsert(
+                    {"name": cat_name, "slug": slug, "parent_slug": None, "article_count": count},
+                    on_conflict="slug",
+                ).execute()
+            except Exception:
+                try:
+                    client.table("categories").update({"article_count": count}).eq("slug", slug).execute()
+                except Exception as exc2:
+                    logger.warning("Category update failed for %s: %s", cat_name, exc2)
 
-        # Upsert subcategories
         for (cat_name, sub_name), count in subcat_counts.items():
             if not sub_name:
                 continue
             parent_slug = to_slug(cat_name)
             sub_slug = f"{parent_slug}-{sub_name.lower().replace(' ', '-')}"
-            client.table("categories").upsert(
-                {"name": sub_name, "slug": sub_slug, "parent_slug": parent_slug, "article_count": count},
-                on_conflict="slug",
-            ).execute()
+            try:
+                client.table("categories").upsert(
+                    {"name": sub_name, "slug": sub_slug, "parent_slug": parent_slug, "article_count": count},
+                    on_conflict="slug",
+                ).execute()
+            except Exception:
+                try:
+                    client.table("categories").update({"article_count": count}).eq("slug", sub_slug).execute()
+                except Exception as exc2:
+                    logger.warning("Subcategory update failed for %s: %s", sub_name, exc2)
 
-        logger.info(
-            "Category counts updated — %d categories, %d subcategories",
-            len(cat_counts), len(subcat_counts),
-        )
+        logger.info("Category counts updated — %d categories, %d subcategories",
+                    len(cat_counts), len(subcat_counts))
     except Exception as exc:
         logger.error("Category recalculation failed: %s", exc)
 
 
 def save_trending_topics(topics: list[dict[str, Any]]) -> None:
-    """Replace all trending topics with the fresh list."""
     client = get_client()
     try:
         client.table("trending_topics").delete().neq(
