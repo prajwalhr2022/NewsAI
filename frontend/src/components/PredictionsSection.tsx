@@ -8,9 +8,9 @@ interface PredictionsProps {
 }
 
 const ASSETS = [
-  { key: 'gold',          label: 'Gold',         emoji: '🥇' },
-  { key: 'silver',        label: 'Silver',       emoji: '🥈' },
-  { key: 'oil',           label: 'Crude Oil',    emoji: '🛢️' },
+  { key: 'gold',          label: 'Gold',           emoji: '🥇' },
+  { key: 'silver',        label: 'Silver',         emoji: '🥈' },
+  { key: 'oil',           label: 'Crude Oil',      emoji: '🛢️' },
   { key: 'global_stocks', label: 'Global Markets', emoji: '🌐' },
   { key: 'india_stocks',  label: 'India Markets',  emoji: '🇮🇳' },
 ]
@@ -32,10 +32,11 @@ function ConfidencePill({ confidence }: { confidence: PredictionItem['confidence
       fontSize: '0.65rem', fontWeight: 600,
       padding: '1px 6px', borderRadius: '9999px',
       textTransform: 'uppercase', letterSpacing: '0.05em',
-      ...(Object.fromEntries(colors[confidence].split(';').map(s => {
+      // FIX 1: Removed extra parenthesis around Object.fromEntries
+      ...Object.fromEntries(colors[confidence].split(';').map(s => {
         const [k, v] = s.split(':').map(x => x.trim())
         return [k === 'background' ? 'background' : 'color', v]
-      }))),
+      })),
     }}>
       {confidence}
     </span>
@@ -53,7 +54,8 @@ export default function PredictionsSection({ predictions }: PredictionsProps) {
         }}>
           📊 Market Predictions
         </h2>
-        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'var(--accent-soft)', color: 'var(--accent)', padding: '2px 8px', borderRadius: '9999px', fontWeight: 500 }}>
+        {/* FIX 2: Removed duplicate color property */}
+        <span style={{ fontSize: '0.7rem', background: 'var(--accent-soft)', color: 'var(--accent)', padding: '2px 8px', borderRadius: '9999px', fontWeight: 500 }}>
           1-Week Outlook
         </span>
         {predictions?.generated_at && (

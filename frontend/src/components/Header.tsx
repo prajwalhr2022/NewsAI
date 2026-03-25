@@ -50,9 +50,9 @@ export default function Header({ search, onSearchChange, language, onLanguageCha
               <div style={{ fontFamily: 'var(--font-playfair)', fontWeight: 900, fontSize: '1.25rem', color: 'var(--text-primary)', letterSpacing: '-0.01em', lineHeight: 1.1 }}>
                 NewsAI
               </div>
-              <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+              {/* <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                 Truth · News · Insight
-              </div>
+              </div> */}
             </div>
             {time && (
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '0.5rem', fontVariantNumeric: 'tabular-nums' }}>
